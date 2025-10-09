@@ -1983,6 +1983,140 @@ def sample_layer_profile(data, roi, depths, n_layers):
     return y, (np.arange(n_layers) + 0.5) / n_layers
 
 
+def sample_temporal_layer_data_to_df(data_fname, roi_fname, depths_fname, layers_dict, 
+                                     tentzero=False):
+    """
+    Sample temporal layer data and return as a pandas DataFrame.
+    
+    This function extracts layer-specific temporal signals from temporal data within
+    a specified ROI and organizes the results in a structured DataFrame format.
+    
+    Parameters
+    ----------
+    data_fname : str or dict
+        Path to NIfTI file containing data with shape (x, y, z, t).
+        If a dictionary is provided, it should map condition names to file paths.
+        Example: {'condition1': 'path/to/condition1.nii', 'condition2': 'path/to/condition2.nii'}.
+    roi_fname : str
+        Path to NIfTI file containing ROI mask with shape (x, y, z).
+    depths_fname : str
+        Path to NIfTI file containing relative cortical depths with shape (x, y, z).
+    layers_dict : dict
+        Dictionary mapping layer names to depth range tuples, e.g., 
+        {'superficial': (0.5, 1.0), 'deep': (0.0, 0.5)}.
+    tentzero : bool, optional
+        If True, insert zeros at the beginning and end of the time series.
+        Default is False.
+    
+    Returns
+    -------
+    df: pd.DataFrame
+        DataFrame with columns: timepoint, layer, depth, signal.
+        Each row represents the average signal for a layer at a specific timepoint.
+    """
+    if isinstance(data_fname, dict):
+        df_list = []
+        for condition, fname in data_fname.items():
+            df_condition = sample_temporal_layer_data_to_df(fname, roi_fname, depths_fname, layers_dict, tentzero)
+            df_condition['condition'] = condition
+            df_list.append(df_condition)
+        df = pd.concat(df_list, ignore_index=True)
+        return df
+
+    sampled_data, sampled_depths = sample_depths(data_fname, roi_fname, depths_fname)
+
+    df = pd.DataFrame(columns=["timepoint","layer","depth","signal"])
+    if sampled_data is not None:
+        for layer, layer_boundaries in layers_dict.items():
+            signal = np.nanmean(sampled_data[:,(sampled_depths >= layer_boundaries[0]) &
+                                               (sampled_depths <= layer_boundaries[1])], axis=1)
+
+            if tentzero:
+                signal = np.insert(signal, [0, len(signal)], 0)
+
+            df = pd.concat([df, pd.DataFrame({"timepoint": np.arange(len(signal)),
+                                              "layer": layer,
+                                              "depth": 1 - np.mean(layer_boundaries),
+                                              "signal": signal})], ignore_index=True)
+    return df
+
+def calculate_df_condition_contrasts(df, contrasts_dict):
+    """
+    Calculate differential contrasts between conditions in a DataFrame of sampled temporal layer data,
+    and creates a new DataFrame with the contrast signals.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with columns including 'condition' and 'signal'. Other columns will be preserved.
+    contrasts_dict : dict
+        Dictionary mapping contrast names to tuples of condition names.  The contrast is 
+        calculated as condition1 - condition2, etc.
+        Example: {'contrast1': ['condition1', 'condition2'], 'contrast2': ['condition3', 'condition4']}.
+    
+    Returns
+    -------
+    contrasts_df : pd.DataFrame
+        DataFrame with same structure as input but with 'condition' replaced by contrast names
+        and 'signal' containing the contrast values.
+    """    
+    # Get all columns except 'condition' and 'signal' for merging
+    merge_cols = [col for col in df.columns if col not in ['condition', 'signal']]
+    
+    # Get all columns except 'signal' for the final output structure
+    output_cols = [col for col in df.columns if col != 'signal'] + ['signal']
+    
+    df_contrasts = pd.DataFrame(columns=df.columns)
+    for contrast_name, conditions in contrasts_dict.items():
+            condition1_data = df[df['condition'] == conditions[0]]
+            condition2_data = df[df['condition'] == conditions[1]]
+            merged_data = pd.merge(condition1_data, condition2_data, on=merge_cols, suffixes=('_c1', '_c2'))
+            merged_data['signal'] = merged_data['signal_c1'] - merged_data['signal_c2']
+            merged_data['condition'] = contrast_name
+            df_contrasts = pd.concat([df_contrasts, merged_data[output_cols]], ignore_index=True)
+    return df_contrasts
+
+def calculate_df_period_averages(df, periods_dict):
+    """
+    Calculate average signals for specified periods in a DataFrame of sampled temporal layer data.
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with columns: subject, timepoint, condition, layer, depth, signal.
+    periods_dict : dict
+        Dictionary mapping period names to lists of timepoints.
+        Example: {'delay': [0, 1, 2], 'response': [3, 4, 5]}.
+    """
+    # Get all columns except 'timepoint' and 'signal' for grouping
+    grouping_cols = [col for col in df.columns if col not in ['timepoint', 'signal']]
+    
+    # Create list to store results for each period
+    period_dfs = []
+    
+    for period_name, period_timepoints in periods_dict.items():
+        # Filter data for this period's timepoints
+        period_data = df[df['timepoint'].isin(period_timepoints)].copy()
+        
+        if len(period_data) > 0:
+            # Group by all columns except timepoint and signal, then aggregate
+            period_avg = (period_data
+                         .groupby(grouping_cols, as_index=False)
+                         .agg({'signal': 'mean'})
+                         .assign(period=period_name))
+            
+            period_dfs.append(period_avg)
+    
+    # Concatenate all periods
+    if period_dfs:
+        df_avg = pd.concat(period_dfs, ignore_index=True)
+        # Reorder columns to have period after the grouping columns
+        cols = grouping_cols + ['period', 'signal']
+        df_avg = df_avg[cols]
+    else:
+        df_avg = pd.DataFrame()
+    
+    return df_avg
+
 def plot_profiles(data_list, roi, depths, n_layers, colors=None, labels=None):
     ax = plt.axes()
     line_handles = []
