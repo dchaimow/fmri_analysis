@@ -2051,11 +2051,15 @@ def get_labels_data(
                 d = sample_roi(data_file, roi)
                 if layers is not None:
                     l = sample_roi(layers, roi)
-                    df = df.append(
+                    df = pd.concat([
+                        df,
                         pd.DataFrame({"value": d, "layer": l}).assign(label=label_name)
-                    )
+                    ], ignore_index=True)
                 else:
-                    df = df.append(pd.DataFrame({"value": d}).assign(label=label_name))
+                    df = pd.concat([
+                        df,
+                        pd.DataFrame({"value": d}).assign(label=label_name)
+                    ], ignore_index=True)
                 if print_results:
                     m, s, n = average_roi(data_file, roi)
                     print(
