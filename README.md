@@ -1,1 +1,1 @@
-# fmri-analysis
+# fmri analysis
