@@ -366,6 +366,75 @@ def index_roi(roi, idx):
     """
     return math_img(f"img=={idx}", img=roi)
 
+def fs_LR_labels_to_native_surf(labels_fs_LR, ciftify_dir, native_pial_surf, native_white_surf, hemi, labels_native_surf_out):
+    # extract subject name from ciftify_dir ( = name of the last directory)
+    subject = os.path.basename(os.path.normpath(ciftify_dir))
+    # set file names
+    fs_LR_sphere = os.path.join(ciftify_dir,"MNINonLinear", 
+                                f"{subject}.{hemi}.sphere.164k_fs_LR.surf.gii")
+    fs_LR_mid_surf = os.path.join(ciftify_dir,"MNINonLinear",
+                                f"{subject}.{hemi}.midthickness.164k_fs_LR.surf.gii")
+    fs_LR_roi = os.path.join(ciftify_dir,"MNINonLinear",
+                            f"{subject}.{hemi}.atlasroi.164k_fs_LR.shape.gii")
+    native_sphere = os.path.join(ciftify_dir,"MNINonLinear","Native",
+                                f"{subject}.{hemi}.sphere.MSMSulc.native.surf.gii")
+    
+    # proceed within temporary directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # generate mid surf
+        native_mid_surf = os.path.join(tmpdir, f"{hemi}.mid.func.surf.gii")
+        subprocess.run(["wb_command",
+                "-surface-average",
+                native_mid_surf,
+                "-surf", native_pial_surf,
+                "-surf", native_white_surf])    
+        
+        # resample the labels from fs_LR space to native surface space
+        subprocess.run(["wb_command",
+                        "-label-resample",
+                        labels_fs_LR,
+                        fs_LR_sphere,
+                        native_sphere,
+                        "ADAP_BARY_AREA",
+                        labels_native_surf_out,
+                        "-area-surfs", 
+                        fs_LR_mid_surf,
+                        native_mid_surf,
+                        "-current-roi",
+                        fs_LR_roi],check=True)
+
+def fs_LR_labels_to_native_volume(labels_fs_LR, labels_native_volume_out,
+                                  ciftify_dir, native_pial_surf, native_white_surf, volume_space_file, hemi,
+                                  labels_native_surf_out=None):
+
+    # proceed within temporary directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # generate mid surf
+        native_mid_surf = os.path.join(tmpdir, f"{hemi}.mid.func.surf.gii")
+        subprocess.run(["wb_command",
+                "-surface-average",
+                native_mid_surf,
+                "-surf", native_pial_surf,
+                "-surf", native_white_surf])    
+        
+        # resample the labels from fs_LR space to native surface space
+        if labels_native_surf_out is None:
+            labels_native_surf_out = os.path.join(tmpdir, f"{hemi}.native.label.gii")
+        
+
+        fs_LR_labels_to_native_surf(labels_fs_LR, ciftify_dir, native_pial_surf, native_white_surf, hemi, labels_native_surf_out)
+        
+        # now we map the labels to the native volume
+        subprocess.run(["wb_command",
+                    "-label-to-volume-mapping",
+                    labels_native_surf_out,
+                    native_mid_surf,
+                    volume_space_file,
+                    labels_native_volume_out,
+                    "-ribbon-constrained",
+                    native_white_surf,
+                    native_pial_surf],check=True)
+
 
 def fs_LR_label_to_fs_volume(ciftify_dir, analysis_dir, labels, hemi, out_basename):
     """Transforms label .gii file in fs_LR space to Freesurfer volume."""
