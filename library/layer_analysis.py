@@ -1964,6 +1964,11 @@ def sample_depths(data, roi, depths):
     roi_reset = reset_affine(roi)
     depths_reset = reset_affine(depths)
 
+    # binarize roi
+    roi_data = roi_reset.get_fdata()
+    roi_data[roi_data != 0] = 1
+    roi_reset = nib.Nifti1Image(roi_data, roi_reset.affine, roi_reset.header)
+
     masked_data = apply_mask(data_reset, roi_reset)
     masked_depths = apply_mask(depths_reset, roi_reset)
     return masked_data, masked_depths
