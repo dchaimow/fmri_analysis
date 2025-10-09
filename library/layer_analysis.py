@@ -842,7 +842,7 @@ def surf_to_vol_hcp(
 
 
 def sample_surf_hcp(
-    volume_file, white_surf, pial_surf, mid_surf, outfile, mask_file=None, roi_out=None
+    volume_file, white_surf, pial_surf, mid_surf, outfile, mask_file=None, bad_vertices_out=None
 ):
     """
     Samples volume to surface using arbitrary GIFTI surfaces using hcp tools (wb_command).
@@ -873,8 +873,8 @@ def sample_surf_hcp(
         white_surf,
         pial_surf,
     ]
-    if roi_out is not None:
-        cmd_volume_to_surface += ["-bad-vertices-out", roi_out]
+    if bad_vertices_out is not None:
+        cmd_volume_to_surface += ["-bad-vertices-out", bad_vertices_out]
 
     if mask_file is None:
         subprocess.run(cmd_volume_to_surface, check=True)
@@ -896,85 +896,155 @@ def sample_surf_hcp(
         return outfile, mid_surf
 
 
-def smooth_surfmetric_hcp(metric_in, metric_out, mid_surf, fwhm):
-    subprocess.run(
-        [
-            "wb_command",
-            "-metric-smoothing",
-            mid_surf,
-            metric_in,
-            str(fwhm),
-            metric_out,
-            "-fwhm",
-            "-fix-zeros",
-        ],
-        check=True,
-    )
-    return metric_out
+def smooth_surfmetric_hcp(metric_in, metric_out, mid_surf, fwhm=None, sigma=None, 
+                          roi=None):
 
+    # check whether fwhm or sigma is provided
+    if fwhm is None and sigma is None:
+        sigma = 0
+    elif fwhm is not None and sigma is not None:
+        raise ValueError("Either fwhm or sigma can be provided, not both.")
+    elif fwhm is not None:
+        sigma = fwhm / 2.355  # convert fwhm to sigma
+
+    if sigma == 0:
+        # if sigma is 0, just copy the metric
+        if metric_in != metric_out:
+            copy2(metric_in, metric_out)
+        return metric_out
+    else:
+        cmd = ["wb_command",
+                "-metric-smoothing",
+                mid_surf,
+                metric_in,
+                str(sigma),
+                metric_out]
+        if roi is not None:
+            cmd += ["-roi", roi]
+        # note: I removed fix-zeros option to avoid potential issues with zero values
+        # using a mask (roi) is the better approach to treat missing data
+        subprocess.run(cmd, check=True)
+        return metric_out
 
 def transform_data_native_surf_to_fs_LR(
-    data_native_surf, data_fs_LR_surf, native_mid_surf, hemi, ciftify_dir
+    data_native_surf, data_fs_LR_surf, native_mid_surf, hemi, ciftify_dir, bad_vertices=None, 
+    coverage_fs_LR_surf=None, smooth_sigma=None
 ):
-    # find names (subject) of native anf fs_LR spheres
-    native_sphere = glob.glob(
-        os.path.join(
-            ciftify_dir,
-            "MNINonLinear",
-            "Native",
-            f"*.{hemi}.sphere.MSMSulc.native.surf.gii",
-        )
-    )[0]
-    fs_LR_sphere = glob.glob(
-        os.path.join(
-            ciftify_dir, "MNINonLinear", f"*.{hemi}.sphere.164k_fs_LR.surf.gii"
-        )
-    )[0]
+    """
+    Transforms surface data from native surface space to fs_LR space using HCP tools (wb_command).
+    - requires ciftify output directory to find necessary surfaces
+    - if bad_vertices is provided, it should be a shape.gii file with 1s for bad vertices and 0s for good vertices
+    - if smooth_sigma is provided, it will be used to smooth the data on the native surface before resampling
+    - if coverage_fs_LR_surf is provided, it will be used to output the coverage of the resampling
+    :return: data_fs_LR_surf, coverage_fs_LR_surf
+    """
 
-    # find name of fs_LR midthickness (for area correction)
-    fs_LR_mid_surf = glob.glob(
-        os.path.join(
-            ciftify_dir, "MNINonLinear", f"*.{hemi}.midthickness.164k_fs_LR.surf.gii"
-        )
-    )[0]
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        # find names (subject) of native and fs_LR spheres
+        native_sphere = glob.glob(
+            os.path.join(
+                ciftify_dir,
+                "MNINonLinear",
+                "Native",
+                f"*.{hemi}.sphere.MSMSulc.native.surf.gii",
+            )
+        )[0]
+        fs_LR_sphere = glob.glob(
+            os.path.join(
+                ciftify_dir, "MNINonLinear", f"*.{hemi}.sphere.164k_fs_LR.surf.gii"
+            )
+        )[0]
 
-    # find names of surface rois to exclude medial wall
-    native_surf_roi = glob.glob(
-        os.path.join(
-            ciftify_dir, "MNINonLinear", "Native", f"*.{hemi}.roi.native.shape.gii"
-        )
-    )[0]
-    fs_LR_surf_roi = glob.glob(
-        os.path.join(
-            ciftify_dir, "MNINonLinear", f"*.{hemi}.atlasroi.164k_fs_LR.shape.gii"
-        )
-    )[0]
+        # find name of fs_LR midthickness (for area correction)
+        fs_LR_mid_surf = glob.glob(
+            os.path.join(
+                ciftify_dir, "MNINonLinear", f"*.{hemi}.midthickness.164k_fs_LR.surf.gii"
+            )
+        )[0]
 
-    cmd1 = [
-        "wb_command",
-        "-metric-resample",
-        data_native_surf,
-        native_sphere,
-        fs_LR_sphere,
-        "ADAP_BARY_AREA",
-        data_fs_LR_surf,
-        "-area-surfs",
-        native_mid_surf,
-        fs_LR_mid_surf,
-        "-current-roi",
-        native_surf_roi,
-    ]
+        # find names of surface rois to exclude medial wall
+        native_surf_roi = glob.glob(
+            os.path.join(
+                ciftify_dir, "MNINonLinear", "Native", f"*.{hemi}.roi.native.shape.gii"
+            )
+        )[0]
+        fs_LR_surf_roi = glob.glob(
+            os.path.join(
+                ciftify_dir, "MNINonLinear", f"*.{hemi}.atlasroi.164k_fs_LR.shape.gii"
+            )
+        )[0]
 
-    cmd2 = [
-        "wb_command",
-        "-metric-mask",
-        data_fs_LR_surf,
-        fs_LR_surf_roi,
-        data_fs_LR_surf,
-    ]
+        # if roi that specifies where original metric is defined is provided, combine it with native surface roi
+        # by calculating the logical and between both metric files
+        if bad_vertices is not None:
+            combined_native_surf_roi = os.path.join(
+                tmpdirname, "combined_native_surf_roi.shape.gii"
+            )
+            cmd0 = [
+                "wb_command",
+                "-metric-math",
+                "!(img1) && img2",
+                combined_native_surf_roi,
+                "-var",
+                "img1",
+                bad_vertices,
+                "-var",
+                "img2",
+                native_surf_roi,
+            ]
+            subprocess.run(cmd0, check=True, stdout=subprocess.DEVNULL)
+            native_surf_roi = combined_native_surf_roi
 
-    subprocess.run(cmd1, check=True)
-    subprocess.run(cmd2, check=True)
+        if smooth_sigma is not None and smooth_sigma > 0:
+            # smooth the data native surface metric before resampling
+            cmd_smooth = [
+                "wb_command",
+                "-metric-smoothing",
+                native_mid_surf,
+                data_native_surf,
+                str(smooth_sigma),
+                data_native_surf,
+                "-roi",
+                native_surf_roi,
+            ]
+            subprocess.run(cmd_smooth, check=True)
+
+        cmd1 = [
+            "wb_command",
+            "-metric-resample",
+            data_native_surf,
+            native_sphere,
+            fs_LR_sphere,
+            "ADAP_BARY_AREA",
+            data_fs_LR_surf,
+            "-area-surfs",
+            native_mid_surf,
+            fs_LR_mid_surf,
+            "-current-roi",
+            native_surf_roi,
+        ]
+        if coverage_fs_LR_surf is not None:
+            cmd1 += ["-valid-roi-out", coverage_fs_LR_surf]
+
+        cmd2 = [
+            "wb_command",
+            "-metric-mask",
+            data_fs_LR_surf,
+            fs_LR_surf_roi,
+            data_fs_LR_surf,
+        ]
+
+        subprocess.run(cmd1, check=True)
+        subprocess.run(cmd2, check=True)
+        if coverage_fs_LR_surf is not None:
+            cmd3 = [
+            "wb_command",
+            "-metric-mask",
+            coverage_fs_LR_surf,
+            fs_LR_surf_roi,
+            coverage_fs_LR_surf,
+        ]
+
     return data_fs_LR_surf
 
 
@@ -1004,7 +1074,8 @@ def sample_layer_to_fs_LR(
     depth_range=[0, 1],
     mask=None,
     depth_file=None,
-):
+    coverage_out=None,
+    smooth_sigma=None):
     # if depth_file provided, use it to calculate mask, otherwise generate intermediate layer surfaces
     # depth_range: 0 = wm boundary, 1 = pial surface
 
@@ -1012,6 +1083,10 @@ def sample_layer_to_fs_LR(
         mid_surf = os.path.join(tmpdirname, "mid.surf.gii")
         data_native_surf = os.path.join(tmpdirname, "data_native_surf.func.gii")
         mask_file = os.path.join(tmpdirname, "mask.nii")
+        if coverage_out is not None:
+            bad_vertices_out = os.path.join(tmpdirname, "bad_vertices.native.shape.gii")
+        else:
+            bad_vertices_out = None
 
         # 1. generate boundary surfaces or compute layer mask
         if depth_file:
@@ -1049,9 +1124,6 @@ def sample_layer_to_fs_LR(
         if isinstance(mask, nib.nifti1.Nifti1Image):
             nib.save(mask, mask_file)
             mask = mask_file
-        # print(nib.load(mask_file).affine)
-        # print(nib.load(volume_file).affine)
-        # print(depth_surfs)
         data_native_surf, mid_surf = sample_surf_hcp(
             volume_file,
             depth_surfs[0],
@@ -1059,11 +1131,15 @@ def sample_layer_to_fs_LR(
             mid_surf,
             outfile=data_native_surf,
             mask_file=mask,
+            bad_vertices_out=bad_vertices_out,
         )
+
         # 3. resample to fs_LR
         output_file = transform_data_native_surf_to_fs_LR(
-            data_native_surf, output_file, mid_surf, hemi, ciftify_dir
+            data_native_surf, output_file, mid_surf, hemi, ciftify_dir, bad_vertices=bad_vertices_out, 
+            coverage_fs_LR_surf=coverage_out, smooth_sigma=smooth_sigma
         )
+       
 
     return output_file
 
@@ -1076,8 +1152,7 @@ def sample_surf_func_stat(
     n_depths=12,
     hemi=None,
     force=False,
-    depths=None,
-):
+    depths=None):
     # sample stat to a number of intermediate surfaces
     stat_file_dir = os.path.dirname(os.path.abspath(stat_file))
     stat_file_base = fsl_remove_ext(os.path.basename(os.path.abspath(stat_file)))
@@ -1151,8 +1226,7 @@ def get_stat_cluster_roi(
     thickness_files=None,
     fwhm=5,
     threshold=2,
-    force=False,
-):
+    force=False):
     stat_cluster_labels = dict()
     for hemi in ["lh", "rh"]:
         # 1. take activation map and project to surface
