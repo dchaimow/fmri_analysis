@@ -11,6 +11,12 @@ fs_dir=$2
 
 mri_convert ${fs_dir}/mri/T1.mgz fs_T1.nii
 
+# Check if mask exists and set mask option
+MASK_OPTION=""
+if [ -f "mask.nii" ]; then
+    MASK_OPTION="-x mask.nii"
+fi
+
 antsRegistration \
     --verbose 1 \
     --dimensionality 3  \
@@ -25,19 +31,19 @@ antsRegistration \
     --convergence [1000x500x250x100,1e-6,10]  \
     --shrink-factors 12x8x4x2  \
     --smoothing-sigmas 4x3x2x1vox  \
-    -x mask.nii \
+    ${MASK_OPTION} \
     --transform Affine[0.1]  \
     --metric MI[${vaso_T1_file},fs_T1.nii,1,32,Regular,0.25]  \
     --convergence [1000x500x250x100,1e-6,10]  \
     --shrink-factors 12x8x4x2  \
     --smoothing-sigmas 4x3x2x1vox  \
-    -x mask.nii \
+    ${MASK_OPTION} \
     --transform SyN[0.1,3,0]  \
     --metric CC[${vaso_T1_file},fs_T1.nii,1,4]  \
     --convergence [50x50x70x50x20,1e-6,10]  \
     --shrink-factors 10x6x4x2x1  \
     --smoothing-sigmas 5x3x2x1x0vox  \
-    -x mask.nii
+    ${MASK_OPTION}
 
 cp fs_to_func_Warped.nii fs_t1_in-func.nii
 fslcpgeom ${vaso_T1_file} fs_t1_in-func.nii # correct for possible small affine changes
