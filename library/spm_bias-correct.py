@@ -3,7 +3,6 @@ import sys
 import os
 from nipype.interfaces import spm,matlab
 
-spm_path = '/data/pt_02389/Software/spm12'
 
 def spm_bias_correction():
     # bias correct INV2
@@ -19,7 +18,8 @@ if __name__ == "__main__":
     if len(sys.argv) == 3:
         matlab.MatlabCommand.set_default_paths(sys.argv[2])
     else:
-        matlab.MatlabCommand.set_default_paths(spm_path)
+        matlab_cmd = '/opt/spm12/run_spm12.sh /opt/mcr/v93 script'
+        spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
         
     if len(sys.argv) in [2,3]:
         infile = sys.argv[1]
