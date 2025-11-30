@@ -4,7 +4,7 @@ import nibabel as nib
 from .voxeldepths_from_surfaces import load_fs_surf_in_grid
 
 
-def plot_surf_slice(surf, z_slice, color='k'):
+def plot_surf_slice(surf, z_slice, color='k', lw=0.5, alpha=1.0):
     """
     Plot a slice of a surface at z=z_slice
     surf: a dictionary with keys 'vertices' and 'tris'
@@ -56,7 +56,7 @@ def plot_surf_slice(surf, z_slice, color='k'):
     plt.plot(
         np.stack([c1[:, 0], c2[:, 0]], axis=0),
         np.stack([c1[:, 1], c2[:, 1]], axis=0),
-        f'{color}-', lw=0.5
+        f'{color}-', lw=lw, alpha=alpha
     )
 
 
