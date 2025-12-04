@@ -134,12 +134,23 @@ build_container_command() {
     local omp_threads_var=${2:-"CPUS_PER_TASK"}
     
     # Use explicit PATH setting - this approach was confirmed working with debugging
-    echo "apptainer exec --bind ${LIBRARY_DIR}:${LIBRARY_DIR} --env OMP_NUM_THREADS=\${${omp_threads_var}} ${APPTAINER_IMAGE} bash -c \"source /opt/conda/etc/profile.d/conda.sh && conda activate ${CONDA_ENV} && export PATH=${LIBRARY_DIR}:\\\$PATH && ./${SCRIPT_TO_RUN} ${STUDY_DATA_DIR} ${subject}\""
+    echo "apptainer exec --bind ${LIBRARY_DIR}:${LIBRARY_DIR} --env OMP_NUM_THREADS=\${${omp_threads_var}},MCR_CACHE_ROOT=\$MCR_CACHE_ROOT,MATLAB_PREFDIR=\$MATLAB_PREFDIR ${APPTAINER_IMAGE} bash -c \"source /opt/conda/etc/profile.d/conda.sh && conda activate ${CONDA_ENV} && export PATH=${LIBRARY_DIR}:\\\$PATH && export MCR_CACHE_ROOT=\\\$MCR_CACHE_ROOT MATLAB_PREFDIR=\\\$MATLAB_PREFDIR && ./${SCRIPT_TO_RUN} ${STUDY_DATA_DIR} ${subject}\""
 }
 
 # Common function to run container command
 run_container_command() {
     local subject=$1
+    # Ensure unique MCR/MATLAB cache/prefs per job if not preset
+    if [ -z "$MCR_CACHE_ROOT" ]; then
+        local tag="${subject:-local}_${BASHPID}"
+        export MCR_CACHE_ROOT="${TMPDIR:-/tmp}/mcr_${tag}"
+    fi
+    if [ -z "$MATLAB_PREFDIR" ]; then
+        local tag="${subject:-local}_${BASHPID}"
+        export MATLAB_PREFDIR="${TMPDIR:-/tmp}/matlab_${tag}"
+    fi
+    mkdir -p "$MCR_CACHE_ROOT" "$MATLAB_PREFDIR"
+
     eval "$(build_container_command "$subject")"
 }
 
@@ -218,6 +229,14 @@ run_slurm() {
     # Add the execution command directly
     cat >> "$TEMP_SCRIPT" <<-EOF
 	# Run the analysis
+	EOF
+
+    # Set per-job MCR/MATLAB cache to avoid collisions
+    cat >> "$TEMP_SCRIPT" <<-EOF
+	CACHE_TAG="\${SLURM_JOB_ID}_\${SLURM_ARRAY_TASK_ID:-0}"
+	export MCR_CACHE_ROOT="\${TMPDIR:-/tmp}/mcr_\${CACHE_TAG}"
+	export MATLAB_PREFDIR="\${TMPDIR:-/tmp}/matlab_\${CACHE_TAG}"
+	mkdir -p "\$MCR_CACHE_ROOT" "\$MATLAB_PREFDIR"
 	EOF
 
     if [ "$PROCESSING_TYPE" = "subject" ]; then
