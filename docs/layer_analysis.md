@@ -1,5 +1,7 @@
 # Registration and transformation
 
+Legacy notes for `library/layer_analysis.py`.
+
 
 ### fs_surface_to_func
 
