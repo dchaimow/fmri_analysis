@@ -162,10 +162,23 @@ run_slurm() {
     SLURM_OPTS="${SLURM_OPTS} --ntasks-per-node=1"
     SLURM_OPTS="${SLURM_OPTS} --cpus-per-task=${CPUS_PER_TASK}"
     SLURM_OPTS="${SLURM_OPTS} --time=${TIME}"
+    if [ -n "$SLURM_MEM" ]; then
+        SLURM_OPTS="${SLURM_OPTS} --mem=${SLURM_MEM}"
+    fi
+    if [ -n "$SLURM_MEM_PER_CPU" ]; then
+        SLURM_OPTS="${SLURM_OPTS} --mem-per-cpu=${SLURM_MEM_PER_CPU}"
+    fi
+    if [ -n "$SLURM_PARTITION" ]; then
+        SLURM_OPTS="${SLURM_OPTS} --partition=${SLURM_PARTITION}"
+    fi
 
     # Add job array for subject-level processing
     if [ "$PROCESSING_TYPE" = "subject" ]; then
-        SLURM_OPTS="${SLURM_OPTS} --array=1-${NUM_SUBJECTS}"
+        ARRAY_SPEC="1-${NUM_SUBJECTS}"
+        if [ -n "$SLURM_ARRAY_MAX_CONCURRENT" ]; then
+            ARRAY_SPEC="${ARRAY_SPEC}%${SLURM_ARRAY_MAX_CONCURRENT}"
+        fi
+        SLURM_OPTS="${SLURM_OPTS} --array=${ARRAY_SPEC}"
         SLURM_OPTS="${SLURM_OPTS} --output=logs/${JOB_NAME}_%A_%a.out"
         SLURM_OPTS="${SLURM_OPTS} --error=logs/${JOB_NAME}_%A_%a.err"
     else
@@ -199,6 +212,10 @@ run_slurm() {
                 SLURM_OPTS="${SLURM_OPTS} --dependency=afterok:${CLEAN_DEPS}"
             fi
         fi
+    fi
+
+    if [ -n "$SLURM_EXTRA_OPTS" ]; then
+        SLURM_OPTS="${SLURM_OPTS} ${SLURM_EXTRA_OPTS}"
     fi
 
     # Create temporary script
