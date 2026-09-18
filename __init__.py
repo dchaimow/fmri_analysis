@@ -55,8 +55,10 @@ from .library import (
     generate_roi,
     plot_surf_slice,
     surface_plotting,
-    voxel_space_plotting)
+    voxel_space_plotting,
+    voxeldepths_from_surfaces)
 
 __all__ = ['library', 'group_fslr_analysis', 'layer_analysis', 'anatomy', 'cluster_surface', 
-           'generate_roi', 'plot_surf_slice', 'surface_plotting', 'voxel_space_plotting']
+           'generate_roi', 'plot_surf_slice', 'surface_plotting', 'voxel_space_plotting', 
+           'voxeldepths_from_surfaces']
 

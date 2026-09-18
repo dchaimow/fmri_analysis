@@ -17,12 +17,12 @@ NumVol=$(3dinfo -nv ${fBaseName}_nulled.nii)
 rm ${fBaseName}_combined.nii
 
 3dTstat -mean -prefix ${fBaseName}_mean_notnulled.nii ${fBaseName}_notnulled.nii -overwrite
-3dTstat -mean -prefix ${fBaseName}_mean_nulled.nii ${fBaseName}_notnulled.nii -overwrite
+3dTstat -mean -prefix ${fBaseName}_mean_nulled.nii ${fBaseName}_nulled.nii -overwrite
 
 3drefit -space ORIG -view orig ${fBaseName}_mean_notnulled.nii
 3drefit -space ORIG -view orig ${fBaseName}_mean_nulled.nii
 
-LN_MP2RAGE_DNOISE -INV1 ${fBaseName}_mean_nulled.nii -INV2 ${fBaseName}_mean_nulled.nii \
+LN_MP2RAGE_DNOISE -INV1 ${fBaseName}_mean_nulled.nii -INV2 ${fBaseName}_mean_notnulled.nii \
                   -UNI ${fBaseName}_T1_raw.nii -beta 5 -output ${fBaseName}_T1_denoised.nii
 
 # clip 1 - make bias field correction less dependent on few extreme voxels

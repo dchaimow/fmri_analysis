@@ -130,12 +130,24 @@ output_text() {
 # Function to output DOT format (for Graphviz)
 output_dot() {
     # Find terminal nodes (jobs that no other job depends on)
+    # and initial nodes (jobs that have no dependencies)
     declare -A is_terminal
+    declare -A is_initial
     declare -A has_dependents
     
     # Mark all jobs as potentially terminal
     for job_var in "${!jobs[@]}"; do
         is_terminal["$job_var"]=1
+    done
+    
+    # Mark jobs with no dependencies as initial
+    for job_var in "${!jobs[@]}"; do
+        deps="${dependencies[$job_var]}"
+        if [ -z "$deps" ]; then
+            is_initial["$job_var"]=1
+        else
+            is_initial["$job_var"]=0
+        fi
     done
     
     # Mark jobs that have dependents as non-terminal
@@ -157,9 +169,20 @@ output_dot() {
     echo "  node [shape=box, style=rounded];"
     echo
     
+    # Group initial nodes at the top (same rank)
+    echo "  // Initial nodes grouped at top"
+    echo "  { rank=source;"
+    for job_var in "${!jobs[@]}"; do
+        if [ "${is_initial[$job_var]}" -eq 1 ]; then
+            echo "    $job_var;"
+        fi
+    done
+    echo "  }"
+    echo
+    
     # Group terminal nodes at the bottom (same rank)
     echo "  // Terminal nodes grouped at bottom"
-    echo "  { rank=same;"
+    echo "  { rank=sink;"
     for job_var in "${!jobs[@]}"; do
         if [ "${is_terminal[$job_var]}" -eq 1 ]; then
             echo "    $job_var;"

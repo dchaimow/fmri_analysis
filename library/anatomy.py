@@ -12,7 +12,14 @@ from tempfile import TemporaryDirectory
 
 matlab_cmd = '/opt/spm12/run_spm12.sh /opt/mcr/v93 script'
 spm_path = '/opt/spm12/spm12_mcr/home/gaser/gaser/spm/spm12'
-spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
+_SPM_INITIALIZED = False
+
+# Lazy SPM init to avoid triggering MCR/SPM setup on import
+def ensure_spm_initialized():
+    global _SPM_INITIALIZED
+    if not _SPM_INITIALIZED:
+        spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
+        _SPM_INITIALIZED = True
 #for matlab spm at cbs:
 #spm_path = '/data/pt_02389/Software/spm12'
 #matlab.MatlabCommand.set_default_paths(spm_path)
@@ -55,6 +62,7 @@ def mprageize(inv2_file, uni_file, out_file=None):
     """ 
     Based on Sri Kashyap (https://github.com/srikash/presurfer/blob/main/func/presurf_MPRAGEise.m)
     """
+    ensure_spm_initialized()
     with TemporaryDirectory() as tmpdirname:
         copied_inv2 = os.path.join(tmpdirname, 'copied_inv2.nii')
         copied_uni = os.path.join(tmpdirname, 'copied_uni.nii')
@@ -90,6 +98,7 @@ def mprageize(inv2_file, uni_file, out_file=None):
 
 def cat12_seg(in_file,cat12_output_dir):
 
+    ensure_spm_initialized()
     # CAT12 segmentation using temporary memory
     with TemporaryDirectory() as tmpdirname:
         copied_input = os.path.join(tmpdirname, os.path.basename(in_file))
