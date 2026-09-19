@@ -285,7 +285,7 @@ run_parallel() {
     echo "Processing ${JOB_NAME} using GNU parallel run mode" >&2
     
     # Export function and variables for parallel
-    export -f run_container_command
+    export -f run_container_command build_container_command
     export SCRIPT_TO_RUN STUDY_DATA_DIR APPTAINER_IMAGE CONDA_ENV LIBRARY_DIR CPUS_PER_TASK JOB_NAME
     
     echo "Starting ${PROCESSING_TYPE}-level processing: ${JOB_NAME}" >&2
