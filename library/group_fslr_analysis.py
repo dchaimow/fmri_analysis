@@ -38,6 +38,7 @@ from . import layer_analysis as analysis
 import numpy as np
 from tempfile import TemporaryDirectory
 import nibabel as nib
+from joblib import Parallel, delayed
 
 # set MAX_CPUS based on OMP_NUM_THREADS, set to 1 if not set
 try:
