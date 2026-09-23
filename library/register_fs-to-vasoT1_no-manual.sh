@@ -17,7 +17,12 @@ if [ -f "mask.nii" ]; then
     MASK_OPTION="-x mask.nii"
 fi
 
+#set to single-thread to ensure reproducibility of results (otherwise antsRegistration uses all available threads and results may vary slightly across runs)
+export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+export OMP_NUM_THREADS=1
+
 antsRegistration \
+    --random-seed 1234 \
     --verbose 1 \
     --dimensionality 3  \
     --float 0  \
