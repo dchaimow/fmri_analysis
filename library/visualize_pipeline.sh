@@ -169,18 +169,19 @@ output_dot() {
     echo "  node [shape=box, style=rounded];"
     echo
     
-    # Group initial nodes at the top (same rank)
+    # Group initial nodes at the top (same rank), excluding isolated jobs.
+    # Isolated jobs belong only to the bottom group to avoid conflicting ranks.
     echo "  // Initial nodes grouped at top"
     echo "  { rank=source;"
     for job_var in "${!jobs[@]}"; do
-        if [ "${is_initial[$job_var]}" -eq 1 ]; then
+        if [ "${is_initial[$job_var]}" -eq 1 ] && [ "${is_terminal[$job_var]}" -eq 0 ]; then
             echo "    $job_var;"
         fi
     done
     echo "  }"
     echo
     
-    # Group terminal nodes at the bottom (same rank)
+    # Group terminal nodes at the bottom (same rank), including isolated jobs.
     echo "  // Terminal nodes grouped at bottom"
     echo "  { rank=sink;"
     for job_var in "${!jobs[@]}"; do
@@ -242,12 +243,12 @@ if command -v dot &> /dev/null; then
     PIPELINE_BASE=$(basename "$PIPELINE_FILE" .sh)
     SVG_FILE="${PIPELINE_BASE}.svg"
     
-    if dot -Tsvg "$TEMP_DOT" -o "$SVG_FILE" 2>/dev/null; then
+    if dot -Tsvg "$TEMP_DOT" -o "$SVG_FILE"; then
         echo "✓ DAG visualization saved to: $SVG_FILE"
         echo "  Terminal nodes (pipeline endpoints) have bold text and are grouped at the bottom"
         echo "  Subject-level jobs (parallel processing) have double borders"
     else
-        echo "✗ Failed to generate SVG"
+        echo "✗ Graphviz reported an error; any SVG output may be incomplete"
     fi
     
     # Clean up temporary file
