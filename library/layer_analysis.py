@@ -1044,8 +1044,36 @@ def transform_data_native_surf_to_fs_LR(
             fs_LR_surf_roi,
             coverage_fs_LR_surf,
         ]
+            subprocess.run(cmd3, check=True)
 
     return data_fs_LR_surf
+
+
+def transform_roi_native_surf_to_fs_LR(roi_native_surf, ciftify_dir, native_white_surf, native_pial_surf,
+                                       hemi, threshold=0.5):
+    """
+    Transforms a (binary) surface ROI from native surface space to fs_LR space using
+    transform_data_native_surf_to_fs_LR and binarizes it again by thresholding the resampled values.
+    - the native midthickness surface (for area correction) is generated from the white and pial surfaces
+    :return: binary ROI data on the fs_LR surface (numpy array, one value per fs_LR vertex)
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # generate mid surf
+        native_mid_surf = os.path.join(tmpdir, f"{hemi}.mid.surf.gii")
+        subprocess.run(["wb_command",
+                        "-surface-average",
+                        native_mid_surf,
+                        "-surf", native_pial_surf,
+                        "-surf", native_white_surf], check=True)
+
+        # resample roi to fs_LR space
+        roi_fs_LR_surf = os.path.join(tmpdir, "roi_fs_LR.shape.gii")
+        transform_data_native_surf_to_fs_LR(roi_native_surf, roi_fs_LR_surf, native_mid_surf,
+                                            hemi, ciftify_dir)
+
+        # threshold and binarize
+        roi_fs_LR_data = nib.load(roi_fs_LR_surf).darrays[0].data > threshold
+    return roi_fs_LR_data
 
 
 def calc_area_hcp(roi, mid_surf):
