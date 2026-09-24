@@ -1434,8 +1434,8 @@ def calc_stim_times(onset_delay, trial_duration, trial_order, condition_names=No
 def write_stim_time_files(stim_times_runs, cwd=None):
     if cwd == None:
         cwd = os.getcwd()
-    # find all conditions from all runs
-    conditions = set.union(*[set(stim_times.keys()) for stim_times in stim_times_runs])
+    # find all conditions from all runs (sorted, so that the order is reproducible also for string conditions)
+    conditions = sorted(set.union(*[set(stim_times.keys()) for stim_times in stim_times_runs]))
     # for each condition create a file and write a line of stim times for each run
     condition_stim_files = []
     for condition in conditions:
