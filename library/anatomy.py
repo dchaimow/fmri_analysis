@@ -8,25 +8,32 @@ import numpy as np
 import os
 import shutil
 import subprocess
+from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 
 matlab_cmd = '/opt/spm12/run_spm12.sh /opt/mcr/v93 script'
 spm_path = '/opt/spm12/spm12_mcr/home/gaser/gaser/spm/spm12'
 _SPM_INITIALIZED = False
 
+@contextmanager
+def working_directory(path):
+    """ Temporarily changes the current directory.
+    nipype writes and runs matlab scripts (e.g. pyscript.m for its SPM version checks, which also run when
+    SPM interfaces are created) in the current directory, so all SPM/CAT12 related calls are run in a
+    temporary directory, so that concurrent processes do not overwrite each other's scripts. """
+    cwd = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(cwd)
+
 # Lazy SPM init to avoid triggering MCR/SPM setup on import
 def ensure_spm_initialized():
     global _SPM_INITIALIZED
     if not _SPM_INITIALIZED:
-        # nipype checks SPM by writing and running a matlab script (pyscript.m) in the current directory;
-        # do this in a temporary directory, so that concurrent processes do not overwrite each other's script
-        cwd = os.getcwd()
-        with TemporaryDirectory() as tmpdirname:
-            os.chdir(tmpdirname)
-            try:
-                spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
-            finally:
-                os.chdir(cwd)
+        with TemporaryDirectory() as tmpdirname, working_directory(tmpdirname):
+            spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
         _SPM_INITIALIZED = True
 #for matlab spm at cbs:
 #spm_path = '/data/pt_02389/Software/spm12'
@@ -71,7 +78,10 @@ def mprageize(inv2_file, uni_file, out_file=None):
     Based on Sri Kashyap (https://github.com/srikash/presurfer/blob/main/func/presurf_MPRAGEise.m)
     """
     ensure_spm_initialized()
-    with TemporaryDirectory() as tmpdirname:
+    inv2_file, uni_file = os.path.abspath(inv2_file), os.path.abspath(uni_file)
+    if out_file:
+        out_file = os.path.abspath(out_file)
+    with TemporaryDirectory() as tmpdirname, working_directory(tmpdirname):
         copied_inv2 = os.path.join(tmpdirname, 'copied_inv2.nii')
         copied_uni = os.path.join(tmpdirname, 'copied_uni.nii')
         shutil.copyfile(inv2_file, copied_inv2)
@@ -107,8 +117,9 @@ def mprageize(inv2_file, uni_file, out_file=None):
 def cat12_seg(in_file,cat12_output_dir):
 
     ensure_spm_initialized()
+    in_file, cat12_output_dir = os.path.abspath(in_file), os.path.abspath(cat12_output_dir)
     # CAT12 segmentation using temporary memory
-    with TemporaryDirectory() as tmpdirname:
+    with TemporaryDirectory() as tmpdirname, working_directory(tmpdirname):
         copied_input = os.path.join(tmpdirname, os.path.basename(in_file))
         shutil.copyfile(in_file, copied_input)
     
