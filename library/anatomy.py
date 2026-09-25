@@ -18,7 +18,15 @@ _SPM_INITIALIZED = False
 def ensure_spm_initialized():
     global _SPM_INITIALIZED
     if not _SPM_INITIALIZED:
-        spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
+        # nipype checks SPM by writing and running a matlab script (pyscript.m) in the current directory;
+        # do this in a temporary directory, so that concurrent processes do not overwrite each other's script
+        cwd = os.getcwd()
+        with TemporaryDirectory() as tmpdirname:
+            os.chdir(tmpdirname)
+            try:
+                spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
+            finally:
+                os.chdir(cwd)
         _SPM_INITIALIZED = True
 #for matlab spm at cbs:
 #spm_path = '/data/pt_02389/Software/spm12'
@@ -240,9 +248,10 @@ def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None
         shutil.copy2(os.path.join(fs_dir, sub, 'mri', 'brainmask.mgz'),
                     os.path.join(fs_dir, sub, 'mri','brainmask.auto.mgz'))
 
-        # continue recon-all
-        code_dir = os.path.dirname(os.path.abspath(__file__))
-        with open(os.path.join(code_dir,'expert.opts'), 'w') as text_file:
+        # continue recon-all (expert options file in the temporary directory, so that concurrent
+        # processes do not overwrite each other's file)
+        expert_opts_file = os.path.join(tmpdirname, 'expert.opts')
+        with open(expert_opts_file, 'w') as text_file:
             text_file.write('mris_inflate -n 100\n')
 
         # autorecon2 and 3
@@ -251,7 +260,7 @@ def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None
                         " -autorecon2" + " -autorecon3"\
                         " -sd " + fs_dir + \
                         " -s " + sub + \
-                        " -expert " + os.path.join(code_dir,'expert.opts') + \
+                        " -expert " + expert_opts_file + \
                         " -xopts-overwrite" + \
                         " -parallel " + \
                         f" -openmp {n_cpu} "
