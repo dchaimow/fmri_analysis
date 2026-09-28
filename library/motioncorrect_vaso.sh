@@ -30,6 +30,10 @@ done
 ## get run number and TR index for minimum outlier volume
 minindex=`3dTstat -argmin -prefix -  all_outcount_sum.1D\'`
 ovals=(`1d_tool.py -set_run_lengths ${nVols[@]} -index_to_run_tr $minindex`)
+if [ ${#ovals[@]} -ne 2 ]; then
+    echo "motioncorrect_vaso.sh: could not determine the run and volume with the minimum outliers" >&2
+    exit 1
+fi
 
 ## save run and TR indices for extraction of vr_base_min_outlier
 minoutrun=${ovals[0]}

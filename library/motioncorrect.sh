@@ -76,6 +76,10 @@ else
     # get run number and volume index for minimum outlier volume
     minindex=`3dTstat -argmin -prefix -  all_outcount.1D\'` # 0-based index
     ovals=(`1d_tool.py -set_run_lengths ${n_vol_list[@]} -index_to_run_tr $minindex`)
+    if [ ${#ovals[@]} -ne 2 ]; then
+        echo "motioncorrect.sh: could not determine the run and volume with the minimum outliers" >&2
+        exit 1
+    fi
     minoutrun=${ovals[0]}
     minoutvol=$(expr ${ovals[1]} + 3) # +3 because we ignored first 3 volumes
     echo "min outlier: run $minoutrun, TR $minoutvol (0-based index)" | tee min_outlier.txt
