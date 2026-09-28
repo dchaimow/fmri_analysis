@@ -130,6 +130,10 @@ def cat12_seg(in_file,cat12_output_dir):
         median_res = np.median(img.header.get_zooms()[:3])
         
         # Create CAT12 object with specific parameters
+        # note: the CAT12 12.8.2 standalone runs in expert mode, in which CAT12 silently ignores the settings
+        # that nipype writes in the batch layout of the non-expert mode: internal_resampling_process and all
+        # other extopts settings (CAT12 uses its defaults, e.g. resampling [1.0 0.3] and WMHC 2) as well as
+        # surface_and_thickness_estimation (surfaces are estimated); the output settings are applied
         cat12_segment = cat12.CAT12Segment(in_files = copied_input, use_mcr=True)
         cat12_segment.inputs.internal_resampling_process = (median_res, 0.1)
         cat12_segment.inputs.surface_and_thickness_estimation = 0
