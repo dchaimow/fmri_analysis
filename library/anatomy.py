@@ -175,10 +175,14 @@ def cat12_seg(in_file,cat12_output_dir):
         return gm_file, wm_file
 
 
-def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None,n_cpu=1):
+def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None,n_cpu=1,
+                      input_brainmask_file=None):
     # this is slightly different than the mp2rage_recon-all.py from the separate repo
     # in that it tries to keep all intermediate files in a temporary directory
-    # it only creates the freesurfer directory and does not populate anything else    
+    # it only creates the freesurfer directory and does not populate anything else
+    # input_brainmask_file: brain mask (voxel grid of uni_file) to use instead of the one from the CAT12
+    # segmentation, e.g. a mask of an earlier run (CAT12 is not deterministic: its multithreaded denoising
+    # can change single mask voxels between runs)
     with TemporaryDirectory() as tmpdirname:
         # mprageize
         #cwd = os.path.dirname(os.path.abspath(uni_file))
@@ -195,19 +199,25 @@ def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None
             uni_mprageized_brain_file =  uni_mprageized_brain_file.replace('T1w_brain','T1w_brain_gdc')
             brainmask_file = brainmask_file.replace('brainmask','brainmask_gdc')
             
-        # obtain brainmask using cat12
-        cat12_output_dir = os.path.join(tmpdirname, 'cat12_output')
-        wm_file, gm_file = cat12_seg(uni_mprageized_file, cat12_output_dir)
-
-        wm_nii = nib.load(wm_file)
-        gm_nii = nib.load(gm_file)
         uni_mprageized_nii = nib.load(uni_mprageized_file)
-
-        wm_data = wm_nii.get_fdata()
-        gm_data = gm_nii.get_fdata()
         uni_mprageized_data = uni_mprageized_nii.get_fdata()
 
-        brainmask_data = np.array(((wm_data > 0) | (gm_data > 0)),dtype=int)
+        if input_brainmask_file is None:
+            # obtain brainmask using cat12
+            cat12_output_dir = os.path.join(tmpdirname, 'cat12_output')
+            wm_file, gm_file = cat12_seg(uni_mprageized_file, cat12_output_dir)
+
+            wm_data = nib.load(wm_file).get_fdata()
+            gm_data = nib.load(gm_file).get_fdata()
+
+            brainmask_data = np.array(((wm_data > 0) | (gm_data > 0)),dtype=int)
+        else:
+            # use the given brainmask (saved and applied below exactly as the one from cat12)
+            input_brainmask_nii = nib.load(input_brainmask_file)
+            if input_brainmask_nii.shape != uni_mprageized_nii.shape or \
+                    not np.allclose(input_brainmask_nii.affine, uni_mprageized_nii.affine, atol=1e-4):
+                raise ValueError(f'{input_brainmask_file} is not on the voxel grid of {uni_file}')
+            brainmask_data = np.array(np.asarray(input_brainmask_nii.dataobj) > 0, dtype=int)
         brainmask_nii = nib.Nifti1Image(brainmask_data,
                                         uni_mprageized_nii.affine,
                                         uni_mprageized_nii.header)

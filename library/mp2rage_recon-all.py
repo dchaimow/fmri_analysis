@@ -18,6 +18,9 @@ if __name__ == "__main__":
         "--gdc_coeff_file",
         help="run gradient disortion correction using specified coefficient file",)
     parser.add_argument(
+        "--brainmask",
+        help="use this brain mask (voxel grid of the UNI data) instead of the one from the CAT12 segmentation",)
+    parser.add_argument(
         "--ncpu",
         type=int,
         default=1,
@@ -34,5 +37,6 @@ if __name__ == "__main__":
         args.uni,
         output_fs_dir=args.fs_dir,
         gdc_coeff_file=args.gdc_coeff_file,
-        n_cpu=args.ncpu
+        n_cpu=args.ncpu,
+        input_brainmask_file=args.brainmask
     )
