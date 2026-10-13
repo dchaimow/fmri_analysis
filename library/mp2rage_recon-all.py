@@ -4,14 +4,17 @@ import argparse
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="mp2rage_recon-all (requires freesurfer v7.1, CAT12 and optionally gradient_unwarp.py)"
+        description="mp2rage_recon-all: runs a modified FreeSurfer recon-all pipeline (brain mask from CAT12) "
+                    "on MP2RAGE data (mprageized) or, with --mprage, on MPRAGE data (SPM bias corrected) "
+                    "(requires freesurfer, SPM/CAT12 and optionally gradient_unwarp.py and FSL)"
     )
     parser.add_argument(
-        "inv2", type=str, help="path to nifti file containing MP2RAGE INV2 data"
+        "inputs", nargs="+", metavar="input",
+        help="paths to nifti files containing MP2RAGE INV2 and UNI data (in this order), "
+             "or, with --mprage, MPRAGE data"
     )
     parser.add_argument(
-        "uni", type=str, help="path to nifti file containing MP2RAGE UNI data"
-    )
+        "--mprage", action="store_true", help="input is a single MPRAGE instead of MP2RAGE INV2 and UNI")
     parser.add_argument("--fs_dir", type=str, help="path to output fs dir")
     parser.add_argument("--spm_dir", type=str, help="path to spm installation")
     parser.add_argument(
@@ -19,7 +22,10 @@ if __name__ == "__main__":
         help="run gradient disortion correction using specified coefficient file",)
     parser.add_argument(
         "--brainmask",
-        help="use this brain mask (voxel grid of the UNI data) instead of the one from the CAT12 segmentation",)
+        help="use this brain mask (voxel grid of the input data) instead of the one from the CAT12 segmentation",)
+    parser.add_argument(
+        "--intermediate_dir",
+        help="write intermediate files (e.g. mprageized/bias corrected T1w, brain mask) to this directory",)
     parser.add_argument(
         "--ncpu",
         type=int,
@@ -29,14 +35,30 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.mprage and len(args.inputs) != 1:
+        parser.error("with --mprage exactly one input (MPRAGE) is required")
+    if not args.mprage and len(args.inputs) != 2:
+        parser.error("exactly two inputs (INV2 and UNI) are required (or use --mprage for MPRAGE data)")
+
     if args.spm_dir is not None:
         anatomy.set_spm_path(args.spm_dir)
 
-    anatomy.mp2rage_recon_all(
-        args.inv2,
-        args.uni,
-        output_fs_dir=args.fs_dir,
-        gdc_coeff_file=args.gdc_coeff_file,
-        n_cpu=args.ncpu,
-        input_brainmask_file=args.brainmask
-    )
+    if args.mprage:
+        anatomy.mprage_recon_all(
+            args.inputs[0],
+            output_fs_dir=args.fs_dir,
+            gdc_coeff_file=args.gdc_coeff_file,
+            n_cpu=args.ncpu,
+            input_brainmask_file=args.brainmask,
+            intermediate_dir=args.intermediate_dir
+        )
+    else:
+        anatomy.mp2rage_recon_all(
+            args.inputs[0],
+            args.inputs[1],
+            output_fs_dir=args.fs_dir,
+            gdc_coeff_file=args.gdc_coeff_file,
+            n_cpu=args.ncpu,
+            input_brainmask_file=args.brainmask,
+            intermediate_dir=args.intermediate_dir
+        )

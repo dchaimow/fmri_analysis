@@ -47,7 +47,7 @@ Several recurring assumptions show up throughout the code:
 | File | Role | Notes |
 | --- | --- | --- |
 | `library/layer_analysis.py` | Main analysis module for registration helpers, surface sampling, fsLR transforms, ROI generation, trial averaging, layer profiles, and utility helpers. | Best starting point for reusable analysis code. Calls many external tools through `subprocess` and Nipype. |
-| `library/anatomy.py` | Anatomy and MP2RAGE processing utilities, including CAT12 segmentation and `recon-all` orchestration. | Uses SPM/CAT12 via Nipype and expects a working SPM setup. |
+| `library/anatomy.py` | Anatomy and MP2RAGE/MPRAGE processing utilities, including SPM bias correction, CAT12 segmentation and `recon-all` orchestration. | Uses SPM/CAT12 via Nipype and expects a working SPM setup. |
 | `library/surface_plotting.py` | Surface plotting helpers for metrics, atlas boundaries, and cluster visualization. | Pure Python plotting utilities once data already exist. |
 | `library/voxel_space_plotting.py` | Nilearn plotting helpers that first reset images into voxel space. | Useful when affines are inconsistent or deliberately ignored. |
 | `library/cluster_surface.py` | Surface-clustering implementation and CLI for connected high-valued metric clusters. | One of the cleaner standalone Python CLIs in the repo. |
@@ -67,7 +67,7 @@ Several recurring assumptions show up throughout the code:
 | `library/interfaces.py` | Miscellaneous Nipype interface experiments. | Better treated as internal scratch/work-in-progress code. |
 | `library/anat_brain-extract_using-fs-refine.py` | Python refinement of a FreeSurfer-derived brain mask. | Command-line capable, but primarily a utility script. |
 | `library/spm_bias-correct.py` | Simple SPM bias-correction entry point. | Small, direct CLI. |
-| `library/mp2rage_recon-all.py` | Thin CLI around `anatomy.mp2rage_recon_all`. | Good entry point for MP2RAGE anatomy workflow. |
+| `library/mp2rage_recon-all.py` | Thin CLI around `anatomy.mp2rage_recon_all` (and `anatomy.mprage_recon_all` with `--mprage`). | Good entry point for MP2RAGE/MPRAGE anatomy workflow. `--intermediate_dir` keeps intermediate files. |
 | `library/voxel-to-world.py` | Convert voxel indices to world coordinates for a NIfTI image. | Small standalone CLI. |
 
 ### What `layer_analysis.py` contains
@@ -95,7 +95,7 @@ The older file `docs/layer_analysis.md` outlines the intended architecture and i
 
 | File | Purpose | Main external dependencies |
 | --- | --- | --- |
-| `library/mp2rage_recon-all.py` | Run MP2RAGE preprocessing and then FreeSurfer reconstruction through `anatomy.py`. | FreeSurfer, SPM/CAT12, optional `gradient_unwarp.py` |
+| `library/mp2rage_recon-all.py` | Run MP2RAGE (or, with `--mprage`, MPRAGE) preprocessing and then FreeSurfer reconstruction through `anatomy.py`. | FreeSurfer, SPM/CAT12, optional `gradient_unwarp.py` |
 | `library/spm_bias-correct.py` | Run SPM bias correction on a single file. | SPM12, MATLAB Runtime/MATLAB |
 | `library/fs_recon-all_on-brain-extracted.sh` | Run high-resolution `recon-all` when skull stripping has already been done. | FreeSurfer |
 | `library/anat_brain-extract_using-inv2.sh` | Brain-extract anatomical data by creating a mask from MP2RAGE INV2. | FSL |

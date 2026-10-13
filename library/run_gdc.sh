@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 file_in=$1
 coeff_path=${2:-/data/hu_dchaimow/owncloud/pfc-layers/sequences/coeff_SC72CD.grad}
@@ -37,4 +38,4 @@ imcp ${tmpdir}/corrected $(remove_ext ${file_in})_gdc
 imcp ${tmpdir}/warpfield $(remove_ext ${file_in})_gdc_warpfield
 imcp ${tmpdir}/jac $(remove_ext ${file_in})_gdc_jac
 
-rm -rf ${tmpDir}
+rm -rf ${tmpdir}

@@ -123,8 +123,8 @@ Common conventions in this repository:
 
 Use the anatomy helpers and shell wrappers when preparing MP2RAGE or other high-resolution anatomical data:
 
-- `library/mp2rage_recon-all.py`: CLI around `anatomy.mp2rage_recon_all(...)`.
-- `library/anatomy.py`: anatomy utilities including normalization, CAT12 segmentation, and MP2RAGE-to-FreeSurfer processing.
+- `library/mp2rage_recon-all.py`: CLI around `anatomy.mp2rage_recon_all(...)` (`inv2 uni`) and `anatomy.mprage_recon_all(...)` (`--mprage t1w`); `--intermediate_dir` keeps intermediate files.
+- `library/anatomy.py`: anatomy utilities including normalization, SPM bias correction, CAT12 segmentation, and MP2RAGE/MPRAGE-to-FreeSurfer processing.
 - `library/spm_bias-correct.py`: simple SPM bias-correction entry point.
 - `library/fs_recon-all_on-brain-extracted.sh`: run `recon-all` on already skull-stripped input.
 - `library/anat_brain-extract_using-*.sh` and `library/anat_brain-extract_using-fs-refine.py`: brain extraction helpers.

@@ -2,7 +2,6 @@ from nipype.interfaces import spm
 from nipype.interfaces import matlab
 from nipype.interfaces import cat12
 from nipype.interfaces.freesurfer import ApplyVolTransform, ApplyMask
-import nipype.pipeline.engine as pe
 import nibabel as nib
 import numpy as np
 import os
@@ -14,6 +13,9 @@ from tempfile import TemporaryDirectory
 matlab_cmd = '/opt/spm12/run_spm12.sh /opt/mcr/v93 script'
 spm_path = '/opt/spm12/spm12_mcr/home/gaser/gaser/spm/spm12'
 _SPM_INITIALIZED = False
+
+# gradient distortion correction script, expected next to this module
+run_gdc_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'run_gdc.sh')
 
 @contextmanager
 def working_directory(path):
@@ -46,12 +48,19 @@ def set_spm_path(new_spm_path):
 
 def check_spm_path():
     print(spm_path)
-    
+
 def load_niimg(niimg):
     if type(niimg) is str:
         return nib.load(niimg)
     else:
         return niimg
+
+def copy_as_nii(in_file, out_file):
+    """ Copies a nifti file to an uncompressed .nii file (SPM/CAT12 cannot read .nii.gz). """
+    if in_file.endswith('.nii.gz'):
+        nib.save(nib.load(in_file), out_file)
+    else:
+        shutil.copyfile(in_file, out_file)
 
 def normalize(niimg_in,out_file=None):
     niimg_in = load_niimg(niimg_in)
@@ -73,23 +82,18 @@ def multiply(niimg_in1, niimg_in2, out_file=None):
         nib.save(niimg_out,out_file)
     return niimg_out
 
-def mprageize(inv2_file, uni_file, out_file=None):
-    """ 
-    Based on Sri Kashyap (https://github.com/srikash/presurfer/blob/main/func/presurf_MPRAGEise.m)
-    """
+def spm_bias_correct(in_file, out_file=None):
+    """ Bias correction using SPM's (new) segment, returns the bias corrected image. """
     ensure_spm_initialized()
-    inv2_file, uni_file = os.path.abspath(inv2_file), os.path.abspath(uni_file)
+    in_file = os.path.abspath(in_file)
     if out_file:
         out_file = os.path.abspath(out_file)
     with TemporaryDirectory() as tmpdirname, working_directory(tmpdirname):
-        copied_inv2 = os.path.join(tmpdirname, 'copied_inv2.nii')
-        copied_uni = os.path.join(tmpdirname, 'copied_uni.nii')
-        shutil.copyfile(inv2_file, copied_inv2)
-        shutil.copyfile(uni_file, copied_uni)
-    
-        # bias correct INV2
+        copied_file = os.path.join(tmpdirname, 'copied_input.nii')
+        copy_as_nii(in_file, copied_file)
+
         seg = spm.NewSegment(use_mcr=True)
-        seg.inputs.channel_files = copied_inv2
+        seg.inputs.channel_files = copied_file
         seg.inputs.channel_info = (0.001, 30, (False, True))
         tissue1 = ((os.path.join(spm_path,'tpm','TPM.nii'), 1), 2, (False,False), (False, False))
         tissue2 = ((os.path.join(spm_path,'tpm','TPM.nii'), 2), 2, (False,False), (False, False))
@@ -97,22 +101,38 @@ def mprageize(inv2_file, uni_file, out_file=None):
         tissue4 = ((os.path.join(spm_path,'tpm','TPM.nii'), 4), 3, (False,False), (False, False))
         tissue5 = ((os.path.join(spm_path,'tpm','TPM.nii'), 5), 4, (False,False), (False, False))
         tissue6 = ((os.path.join(spm_path,'tpm','TPM.nii'), 6), 2, (False,False), (False, False))
-        seg.inputs.tissues = [tissue1, tissue2, tissue3, tissue4, tissue5, tissue6]    
+        seg.inputs.tissues = [tissue1, tissue2, tissue3, tissue4, tissue5, tissue6]
         seg.inputs.affine_regularization = 'mni'
         seg.inputs.sampling_distance = 3
         seg.inputs.warping_regularization = [0, 0.001, 0.5, 0.05, 0.2]
         seg.inputs.write_deformation_fields = [False, False]
         seg_results = seg.run(cwd=tmpdirname)
-        
-        # normalize bias corrected INV2
-        norm_inv2_niimg = normalize(seg_results.outputs.bias_corrected_images)
-                              
-        # multiply normalized bias corrected INV2 with UNI
-        uni_mprageized_niimg = multiply(norm_inv2_niimg,uni_file)
 
-        if out_file:
-            nib.save(uni_mprageized_niimg,out_file)    
-        return uni_mprageized_niimg
+        # load the data into memory before the temporary directory is removed
+        bias_corrected_niimg = nib.load(seg_results.outputs.bias_corrected_images)
+        bias_corrected_niimg = nib.Nifti1Image(bias_corrected_niimg.get_fdata(),
+                                               bias_corrected_niimg.affine,
+                                               bias_corrected_niimg.header)
+    if out_file:
+        nib.save(bias_corrected_niimg, out_file)
+    return bias_corrected_niimg
+
+def mprageize(inv2_file, uni_file, out_file=None, inv2_biascorr_out_file=None):
+    """
+    Based on Sri Kashyap (https://github.com/srikash/presurfer/blob/main/func/presurf_MPRAGEise.m)
+    """
+    # bias correct INV2
+    inv2_biascorr_niimg = spm_bias_correct(inv2_file, inv2_biascorr_out_file)
+
+    # normalize bias corrected INV2
+    norm_inv2_niimg = normalize(inv2_biascorr_niimg)
+
+    # multiply normalized bias corrected INV2 with UNI
+    uni_mprageized_niimg = multiply(norm_inv2_niimg,uni_file)
+
+    if out_file:
+        nib.save(uni_mprageized_niimg,out_file)
+    return uni_mprageized_niimg
 
 def cat12_seg(in_file,cat12_output_dir):
 
@@ -120,15 +140,20 @@ def cat12_seg(in_file,cat12_output_dir):
     in_file, cat12_output_dir = os.path.abspath(in_file), os.path.abspath(cat12_output_dir)
     # CAT12 segmentation using temporary memory
     with TemporaryDirectory() as tmpdirname, working_directory(tmpdirname):
-        copied_input = os.path.join(tmpdirname, os.path.basename(in_file))
-        shutil.copyfile(in_file, copied_input)
-    
-        # Load the bias corrected image 
+        # Get filename of the (uncompressed) input file
+        in_file_basename = os.path.basename(in_file)
+        if in_file_basename.endswith('.nii.gz'):
+            in_file_basename = in_file_basename[:-3]
+
+        copied_input = os.path.join(tmpdirname, in_file_basename)
+        copy_as_nii(in_file, copied_input)
+
+        # Load the bias corrected image
         img = nib.load(copied_input)
 
         # Calculate median of resolution - to be used by CAT12 object
         median_res = np.median(img.header.get_zooms()[:3])
-        
+
         # Create CAT12 object with specific parameters
         # note: the CAT12 12.8.2 standalone runs in expert mode, in which CAT12 silently ignores the settings
         # that nipype writes in the batch layout of the non-expert mode: internal_resampling_process and all
@@ -142,13 +167,13 @@ def cat12_seg(in_file,cat12_output_dir):
         cat12_segment.inputs.lpba40 = False
         cat12_segment.inputs.cobra = False
         cat12_segment.inputs.hammers = False
-        cat12_segment.inputs.gm_output_native = True    
+        cat12_segment.inputs.gm_output_native = True
         cat12_segment.inputs.gm_output_modulated = False
         cat12_segment.inputs.gm_output_dartel = False
-        cat12_segment.inputs.wm_output_native = True    
+        cat12_segment.inputs.wm_output_native = True
         cat12_segment.inputs.wm_output_modulated = False
         cat12_segment.inputs.wm_output_dartel = False
-        cat12_segment.inputs.csf_output_native = True    
+        cat12_segment.inputs.csf_output_native = True
         cat12_segment.inputs.csf_output_modulated = False
         cat12_segment.inputs.csf_output_dartel = False
         cat12_segment.inputs.jacobianwarped = False
@@ -159,11 +184,8 @@ def cat12_seg(in_file,cat12_output_dir):
         cat12_segment.inputs.output_labelnative = True
         # cat12_segment.inputs.output_surface = False
         # cat12_segment.inputs.no_surf = True
-        cat12_segment.run(cwd = tmpdirname) 
+        cat12_segment.run(cwd = tmpdirname)
 
-        # Get current filename of the bias Corrected file
-        in_file_basename = os.path.basename(os.path.abspath(in_file))
-        
         # Create output directory if it does not exist
         if not os.path.exists(cat12_output_dir):
              os.makedirs(cat12_output_dir)
@@ -179,120 +201,160 @@ def cat12_seg(in_file,cat12_output_dir):
         return gm_file, wm_file
 
 
+def keep_intermediate(file, intermediate_dir):
+    """ Copies an intermediate file to intermediate_dir (if one is given). """
+    if intermediate_dir is not None:
+        os.makedirs(intermediate_dir, exist_ok=True)
+        shutil.copy(file, intermediate_dir)
+
+def fs_subject(output_fs_dir, input_file):
+    """ Returns the freesurfer subjects dir and subject name, default: <dir of input_file>/freesurfer """
+    if output_fs_dir:
+        fs_dir = os.path.dirname(os.path.abspath(output_fs_dir))
+        sub = os.path.basename(os.path.abspath(output_fs_dir))
+    else:
+        fs_dir =  os.path.dirname(os.path.abspath(input_file))
+        sub = 'freesurfer'
+    if not os.path.exists(fs_dir):
+        os.makedirs(fs_dir)
+    return fs_dir, sub
+
 def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None,n_cpu=1,
-                      input_brainmask_file=None):
+                      input_brainmask_file=None, intermediate_dir=None):
     # this is slightly different than the mp2rage_recon-all.py from the separate repo
     # in that it tries to keep all intermediate files in a temporary directory
     # it only creates the freesurfer directory and does not populate anything else
+    # (unless intermediate_dir is given, then the intermediate files are copied there)
     # input_brainmask_file: brain mask (voxel grid of uni_file) to use instead of the one from the CAT12
     # segmentation, e.g. a mask of an earlier run (CAT12 is not deterministic: its multithreaded denoising
     # can change single mask voxels between runs)
+    fs_dir, sub = fs_subject(output_fs_dir, uni_file)
     with TemporaryDirectory() as tmpdirname:
         # mprageize
-        #cwd = os.path.dirname(os.path.abspath(uni_file))
-        uni_basename = os.path.basename(os.path.abspath(uni_file))
-        uni_mprageized_file = os.path.join(tmpdirname,uni_basename.replace('UNIT1','T1w'))
-        uni_mprageized_brain_file =  os.path.join(tmpdirname,uni_basename.replace('UNIT1','T1w_brain'))
-        brainmask_file =  os.path.join(tmpdirname,uni_basename.replace('UNIT1','brainmask'))
-        mprageize(inv2_file,uni_file,uni_mprageized_file)
+        t1w_file = os.path.join(tmpdirname, 'T1w.nii')
+        inv2_biascorr_file = os.path.join(tmpdirname, 'inv2_biascorr.nii')
+        mprageize(inv2_file, uni_file, t1w_file, inv2_biascorr_out_file=inv2_biascorr_file)
+        keep_intermediate(inv2_biascorr_file, intermediate_dir)
+        keep_intermediate(t1w_file, intermediate_dir)
 
-        # run gdc
-        if gdc_coeff_file is not None:
-            subprocess.run(['run_gdc.sh', uni_mprageized_file,  gdc_coeff_file])
-            uni_mprageized_file = uni_mprageized_file.replace('T1w','T1w_gdc')
-            uni_mprageized_brain_file =  uni_mprageized_brain_file.replace('T1w_brain','T1w_brain_gdc')
-            brainmask_file = brainmask_file.replace('brainmask','brainmask_gdc')
-            
-        uni_mprageized_nii = nib.load(uni_mprageized_file)
-        uni_mprageized_data = uni_mprageized_nii.get_fdata()
+        t1w_recon_all(t1w_file, tmpdirname, fs_dir, sub, gdc_coeff_file, n_cpu, input_brainmask_file,
+                      intermediate_dir)
 
-        if input_brainmask_file is None:
-            # obtain brainmask using cat12
-            cat12_output_dir = os.path.join(tmpdirname, 'cat12_output')
-            wm_file, gm_file = cat12_seg(uni_mprageized_file, cat12_output_dir)
+def mprage_recon_all(mprage_file, output_fs_dir=None, gdc_coeff_file=None, n_cpu=1,
+                     input_brainmask_file=None, intermediate_dir=None):
+    # same as mp2rage_recon_all, but for MPRAGE data, which is bias corrected using SPM instead of mprageized
+    fs_dir, sub = fs_subject(output_fs_dir, mprage_file)
+    with TemporaryDirectory() as tmpdirname:
+        # bias correct
+        t1w_file = os.path.join(tmpdirname, 'T1w.nii')
+        spm_bias_correct(mprage_file, t1w_file)
+        keep_intermediate(t1w_file, intermediate_dir)
 
-            wm_data = nib.load(wm_file).get_fdata()
-            gm_data = nib.load(gm_file).get_fdata()
+        t1w_recon_all(t1w_file, tmpdirname, fs_dir, sub, gdc_coeff_file, n_cpu, input_brainmask_file,
+                      intermediate_dir)
 
-            brainmask_data = np.array(((wm_data > 0) | (gm_data > 0)),dtype=int)
-        else:
-            # use the given brainmask (saved and applied below exactly as the one from cat12)
-            input_brainmask_nii = nib.load(input_brainmask_file)
-            if input_brainmask_nii.shape != uni_mprageized_nii.shape or \
-                    not np.allclose(input_brainmask_nii.affine, uni_mprageized_nii.affine, atol=1e-4):
-                raise ValueError(f'{input_brainmask_file} is not on the voxel grid of {uni_file}')
-            brainmask_data = np.array(np.asarray(input_brainmask_nii.dataobj) > 0, dtype=int)
-        brainmask_nii = nib.Nifti1Image(brainmask_data,
-                                        uni_mprageized_nii.affine,
-                                        uni_mprageized_nii.header)
-        nib.save(brainmask_nii,brainmask_file)
-        
-        uni_mprageized_brain_data = brainmask_data * uni_mprageized_data
-        uni_mprageized_brain_nii = nib.Nifti1Image(uni_mprageized_brain_data,
-                                                uni_mprageized_nii.affine,
-                                                uni_mprageized_nii.header)
-        nib.save(uni_mprageized_brain_nii,uni_mprageized_brain_file)
+def t1w_recon_all(t1w_file, tmpdirname, fs_dir, sub, gdc_coeff_file=None, n_cpu=1,
+                  input_brainmask_file=None, intermediate_dir=None):
+    # common part of mp2rage_recon_all and mprage_recon_all, starting from the (mprageized or bias corrected)
+    # T1w image t1w_file in the temporary directory tmpdirname: optional gdc, brain mask (CAT12 or given)
+    # and recon-all using this brain mask
+    t1w_brain_file = os.path.join(tmpdirname, 'T1w_brain.nii')
+    brainmask_file = os.path.join(tmpdirname, 'brainmask.nii')
 
-        # run recon-all
-        if output_fs_dir:
-            fs_dir = os.path.dirname(os.path.abspath(output_fs_dir))
-            sub = os.path.basename(os.path.abspath(output_fs_dir))
-        else:
-            fs_dir =  os.path.dirname(os.path.abspath(uni_file))
-            sub = 'freesurfer'
-        if not os.path.exists(fs_dir):
-            os.makedirs(fs_dir)
-            
-        # autorecon1 without skullstrip removal (~11 mins)
-        os.system("recon-all" + \
-            " -i " + uni_mprageized_file + \
-            " -hires" + \
-            " -autorecon1" + \
-            " -noskullstrip" + \
-            " -sd " + fs_dir + \
-            " -s " + sub + \
-            " -parallel " + \
-            f" -openmp {n_cpu} ")
+    # run gdc
+    if gdc_coeff_file is not None:
+        subprocess.run(['bash', run_gdc_script, t1w_file, os.path.abspath(gdc_coeff_file)], check=True)
+        t1w_file = os.path.join(tmpdirname, 'T1w_gdc.nii')
+        t1w_brain_file = os.path.join(tmpdirname, 'T1w_brain_gdc.nii')
+        brainmask_file = os.path.join(tmpdirname, 'brainmask_gdc.nii')
+        for gdc_output in ['T1w_gdc.nii', 'T1w_gdc_warpfield.nii', 'T1w_gdc_jac.nii']:
+            keep_intermediate(os.path.join(tmpdirname, gdc_output), intermediate_dir)
 
-        # apply brain mask from CAT12
-        transmask = ApplyVolTransform()
-        transmask.inputs.source_file = brainmask_file
-        transmask.inputs.target_file = os.path.join(fs_dir, sub, 'mri', 'orig.mgz')
-        transmask.inputs.reg_header = True
-        transmask.inputs.interp = "nearest"
-        transmask.inputs.transformed_file = os.path.join(fs_dir, sub, 'mri', 'brainmask_mask.mgz')
-        transmask.inputs.args = "--no-save-reg"
-        transmask.run(cwd=tmpdirname)
+    t1w_nii = nib.load(t1w_file)
+    t1w_data = t1w_nii.get_fdata()
 
-        applymask = ApplyMask()
-        applymask.inputs.in_file = os.path.join(fs_dir, sub,'mri','T1.mgz')
-        applymask.inputs.mask_file = os.path.join(fs_dir, sub, 'mri', 'brainmask_mask.mgz')
-        applymask.inputs.out_file =  os.path.join(fs_dir, sub, 'mri', 'brainmask.mgz')
-        applymask.run(cwd=tmpdirname)
+    if input_brainmask_file is None:
+        # obtain brainmask using cat12
+        cat12_output_dir = os.path.join(tmpdirname, 'cat12_output')
+        gm_file, wm_file = cat12_seg(t1w_file, cat12_output_dir)
+        keep_intermediate(gm_file, intermediate_dir)
+        keep_intermediate(wm_file, intermediate_dir)
 
-        shutil.copy2(os.path.join(fs_dir, sub, 'mri', 'brainmask.mgz'),
-                    os.path.join(fs_dir, sub, 'mri','brainmask.auto.mgz'))
+        wm_data = nib.load(wm_file).get_fdata()
+        gm_data = nib.load(gm_file).get_fdata()
 
-        # continue recon-all (expert options file in the temporary directory, so that concurrent
-        # processes do not overwrite each other's file)
-        expert_opts_file = os.path.join(tmpdirname, 'expert.opts')
-        with open(expert_opts_file, 'w') as text_file:
-            text_file.write('mris_inflate -n 100\n')
+        brainmask_data = np.array(((wm_data > 0) | (gm_data > 0)),dtype=int)
+    else:
+        # use the given brainmask (saved and applied below exactly as the one from cat12)
+        input_brainmask_nii = nib.load(input_brainmask_file)
+        if input_brainmask_nii.shape != t1w_nii.shape or \
+                not np.allclose(input_brainmask_nii.affine, t1w_nii.affine, atol=1e-4):
+            raise ValueError(f'{input_brainmask_file} is not on the voxel grid of the input data')
+        brainmask_data = np.array(np.asarray(input_brainmask_nii.dataobj) > 0, dtype=int)
+    brainmask_nii = nib.Nifti1Image(brainmask_data,
+                                    t1w_nii.affine,
+                                    t1w_nii.header)
+    nib.save(brainmask_nii,brainmask_file)
+    keep_intermediate(brainmask_file, intermediate_dir)
 
-        # autorecon2 and 3
-        autorecon23_call = "recon-all" + \
-                        " -hires" + \
-                        " -autorecon2" + " -autorecon3"\
-                        " -sd " + fs_dir + \
-                        " -s " + sub + \
-                        " -expert " + expert_opts_file + \
-                        " -xopts-overwrite" + \
-                        " -parallel " + \
-                        f" -openmp {n_cpu} "
-                        
-        # deal with freesurfer version 7.3.2 bug:
-        fs_version = subprocess.check_output(['recon-all', '--version']).decode('utf-8').split()[0]
-        if '7.3.2' in fs_version:
-            autorecon23_call = autorecon23_call + " -careg"
+    t1w_brain_data = brainmask_data * t1w_data
+    t1w_brain_nii = nib.Nifti1Image(t1w_brain_data,
+                                    t1w_nii.affine,
+                                    t1w_nii.header)
+    nib.save(t1w_brain_nii,t1w_brain_file)
+    keep_intermediate(t1w_brain_file, intermediate_dir)
 
-        os.system(autorecon23_call)
+    # run recon-all
+    # autorecon1 without skullstrip removal (~11 mins)
+    subprocess.run(['recon-all',
+                    '-i', t1w_file,
+                    '-hires',
+                    '-autorecon1',
+                    '-noskullstrip',
+                    '-sd', fs_dir,
+                    '-s', sub,
+                    '-parallel',
+                    '-openmp', str(n_cpu)], check=True)
+
+    # apply brain mask from CAT12
+    transmask = ApplyVolTransform()
+    transmask.inputs.source_file = brainmask_file
+    transmask.inputs.target_file = os.path.join(fs_dir, sub, 'mri', 'orig.mgz')
+    transmask.inputs.reg_header = True
+    transmask.inputs.interp = "nearest"
+    transmask.inputs.transformed_file = os.path.join(fs_dir, sub, 'mri', 'brainmask_mask.mgz')
+    transmask.inputs.args = "--no-save-reg"
+    transmask.run(cwd=tmpdirname)
+
+    applymask = ApplyMask()
+    applymask.inputs.in_file = os.path.join(fs_dir, sub,'mri','T1.mgz')
+    applymask.inputs.mask_file = os.path.join(fs_dir, sub, 'mri', 'brainmask_mask.mgz')
+    applymask.inputs.out_file =  os.path.join(fs_dir, sub, 'mri', 'brainmask.mgz')
+    applymask.run(cwd=tmpdirname)
+
+    shutil.copy2(os.path.join(fs_dir, sub, 'mri', 'brainmask.mgz'),
+                os.path.join(fs_dir, sub, 'mri','brainmask.auto.mgz'))
+
+    # continue recon-all (expert options file in the temporary directory, so that concurrent
+    # processes do not overwrite each other's file)
+    expert_opts_file = os.path.join(tmpdirname, 'expert.opts')
+    with open(expert_opts_file, 'w') as text_file:
+        text_file.write('mris_inflate -n 100\n')
+
+    # autorecon2 and 3
+    autorecon23_cmd = ['recon-all',
+                       '-hires',
+                       '-autorecon2', '-autorecon3',
+                       '-sd', fs_dir,
+                       '-s', sub,
+                       '-expert', expert_opts_file,
+                       '-xopts-overwrite',
+                       '-parallel',
+                       '-openmp', str(n_cpu)]
+
+    # deal with freesurfer version 7.3.2 bug:
+    fs_version = subprocess.check_output(['recon-all', '--version']).decode('utf-8').split()[0]
+    if '7.3.2' in fs_version:
+        autorecon23_cmd.append('-careg')
+
+    subprocess.run(autorecon23_cmd, check=True)
