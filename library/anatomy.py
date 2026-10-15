@@ -227,7 +227,8 @@ def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None
     # (unless intermediate_dir is given, then the intermediate files are copied there)
     # input_brainmask_file: brain mask (voxel grid of uni_file) to use instead of the one from the CAT12
     # segmentation, e.g. a mask of an earlier run (CAT12 is not deterministic: its multithreaded denoising
-    # can change single mask voxels between runs)
+    # can change single mask voxels between runs); with gdc_coeff_file the mask is applied to the gdc corrected
+    # image (same voxel grid), so it has to be in gdc corrected space (e.g. from an earlier run with gdc)
     fs_dir, sub = fs_subject(output_fs_dir, uni_file)
     with TemporaryDirectory() as tmpdirname:
         # mprageize
@@ -285,7 +286,8 @@ def t1w_recon_all(t1w_file, tmpdirname, fs_dir, sub, gdc_coeff_file=None, n_cpu=
 
         brainmask_data = np.array(((wm_data > 0) | (gm_data > 0)),dtype=int)
     else:
-        # use the given brainmask (saved and applied below exactly as the one from cat12)
+        # use the given brainmask (saved and applied below exactly as the one from cat12; with gdc it has to be
+        # in gdc corrected space, which the grid check below cannot detect)
         input_brainmask_nii = nib.load(input_brainmask_file)
         if input_brainmask_nii.shape != t1w_nii.shape or \
                 not np.allclose(input_brainmask_nii.affine, t1w_nii.affine, atol=1e-4):

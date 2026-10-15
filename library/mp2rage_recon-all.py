@@ -22,7 +22,8 @@ if __name__ == "__main__":
         help="run gradient disortion correction using specified coefficient file",)
     parser.add_argument(
         "--brainmask",
-        help="use this brain mask (voxel grid of the input data) instead of the one from the CAT12 segmentation",)
+        help="use this brain mask (voxel grid of the input data) instead of the one from the CAT12 segmentation; "
+             "with --gdc_coeff_file it must be in gdc corrected space (e.g. from an earlier run with gdc)",)
     parser.add_argument(
         "--intermediate_dir",
         help="write intermediate files (e.g. mprageized/bias corrected T1w, brain mask) to this directory",)
