@@ -21,9 +21,17 @@ def load_fs_surf_in_grid(surf_file, grid_to_scanner, label_file=None):
     by using the grid_to_scanner transformation (e.g. affine function a functional nifti image).
     """
     # load freesurfer surface
-    coords, faces, volume_info = nib.freesurfer.read_geometry(
-        surf_file, read_metadata=True
-    )
+    fs_to_scanner = np.eye(4)
+    if surf_file[-4:] == ".gii":
+        surf_gii = nib.load(surf_file)
+        coords = surf_gii.agg_data("NIFTI_INTENT_POINTSET")
+        faces = surf_gii.agg_data("NIFTI_INTENT_TRIANGLE")
+        volume_info = {"cras": np.array([0.0, 0.0, 0.0])}
+    else:
+     # load freesurfer surface
+        coords, faces, volume_info = nib.freesurfer.read_geometry(
+            surf_file, read_metadata=True
+        )
 
     # if label file provided
     if label_file is not None:
