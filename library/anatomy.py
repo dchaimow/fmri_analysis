@@ -186,9 +186,8 @@ def cat12_seg(in_file,cat12_output_dir):
         # cat12_segment.inputs.no_surf = True
         cat12_segment.run(cwd = tmpdirname)
 
-        # Create output directory if it does not exist
-        if not os.path.exists(cat12_output_dir):
-             os.makedirs(cat12_output_dir)
+        # Create output directory if it does not exist (exist_ok: no race between concurrent jobs)
+        os.makedirs(cat12_output_dir, exist_ok=True)
 
         # Copy data out of tmp
         shutil.copy(os.path.join(tmpdirname, 'mri', 'p1' + in_file_basename), os.path.join(cat12_output_dir, 'p1' + in_file_basename))
@@ -215,8 +214,8 @@ def fs_subject(output_fs_dir, input_file):
     else:
         fs_dir =  os.path.dirname(os.path.abspath(input_file))
         sub = 'freesurfer'
-    if not os.path.exists(fs_dir):
-        os.makedirs(fs_dir)
+    # exist_ok: the subjects dir is shared, concurrent jobs (e.g. SLURM array tasks) may create it at the same time
+    os.makedirs(fs_dir, exist_ok=True)
     return fs_dir, sub
 
 def mp2rage_recon_all(inv2_file,uni_file,output_fs_dir=None, gdc_coeff_file=None,n_cpu=1,
