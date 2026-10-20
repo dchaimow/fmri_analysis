@@ -25,6 +25,8 @@ The codebase mainly covers:
 - `docs/layer_analysis.md`: older developer notes for the large `layer_analysis.py` module.
 - `docs/reference.md`: script/module reference for this repository.
 
+When updating fmri_analysis in an existing project, check [Updating fmri_analysis In An Existing Project](#updating-fmri_analysis-in-an-existing-project) first.
+
 ## Installation
 
 There is currently no packaging metadata such as `pyproject.toml` or `setup.py`, so the repository is usually used in one of two ways.
@@ -64,6 +66,16 @@ fmri_analysis.layer_analysis
 fmri_analysis.surface_plotting
 fmri_analysis.cluster_surface
 ```
+
+## Updating fmri_analysis In An Existing Project
+
+Changes that require action (or may change results) when a project updates its copy or submodule of fmri_analysis past the given commit:
+
+- **2026-10-20, `1f58eab` (#18): voxel depths moved to the separate [vdfs](https://github.com/dchaimow/vdfs) package.** `library/voxeldepths_from_surfaces.py` (also used by `ribbon_segmentation_from_surf.py` and `plot_surf_slice.py`) now only re-exports vdfs.
+  - Install vdfs in the project's environment or container: `pip install "git+https://github.com/dchaimow/vdfs@v1.1.0"`. In containers or environments with pinned versions, add `--no-deps` so that pip does not change them (vdfs needs `numpy`, `scipy`, `nibabel`, `numba`, `joblib`). In an `environment.yml`, add `- vdfs @ git+https://github.com/dchaimow/vdfs@v1.1.0` to the `pip:` section.
+  - Without vdfs, `import fmri_analysis` still works, but calling a depth function raises an `ImportError`.
+  - Projects that have their own `vdfs` submodule at the project root (e.g. finn-et-al-2019_replication, 2025_pfc-layer-wm-replication_7tmri_dchaimow): when scripts run from the project root, `import vdfs` finds that submodule before an installed vdfs, so fmri_analysis then uses the submodule's version.
+  - Results: vdfs 1.1.0 with FreeSurfer surfaces and area files gives the same depths as the previous copy here, except for voxels in the prism of the first triangle (previously never used) and the columns output when labels are used. New: gifti input, vertex areas calculated from the surfaces, `voxeldepths_from_surfaces()`. See the [vdfs CHANGELOG](https://github.com/dchaimow/vdfs/blob/main/CHANGELOG.md).
 
 ## Python Dependencies
 
