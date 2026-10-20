@@ -83,6 +83,14 @@ The Python code depends on a scientific Python stack plus neuroimaging interface
 
 Not every script needs every package, but `layer_analysis.py`, `anatomy.py`, and the surface/depth tools assume most of the stack is available.
 
+Voxel depth calculation (`library/voxeldepths_from_surfaces.py`) uses the separate [vdfs](https://github.com/dchaimow/vdfs) package, which needs to be installed in the same environment:
+
+```bash
+pip install "git+https://github.com/dchaimow/vdfs@v1.1.0"
+```
+
+`fmri_analysis.voxeldepths_from_surfaces` re-exports vdfs, so existing code keeps working. Without vdfs, `fmri_analysis` can still be imported, but calling its depth functions raises an `ImportError`.
+
 ## External Software Dependencies
 
 Most command-line tools here are wrappers around other neuroimaging software. Depending on which part of the repository you use, you may need:
@@ -150,7 +158,7 @@ The main reusable Python analysis code lives here:
 - `library/generate_roi.py`: ROI generation utilities and Nipype-style interface.
 - `library/generate_layer_contrast_roi.py`: ROI generation from laminar contrasts.
 - `library/cluster_surface.py`: cluster connected high-valued regions on a surface metric.
-- `library/voxeldepths_from_surfaces.py`: derive voxel-wise cortical depths from white/pial surfaces.
+- `library/voxeldepths_from_surfaces.py`: derive voxel-wise cortical depths from white/pial surfaces (re-exports the [vdfs](https://github.com/dchaimow/vdfs) package).
 - `library/ribbon_segmentation_from_surf.py`: ribbon segmentation utilities from surface geometry.
 
 ### Plotting And Visualization
