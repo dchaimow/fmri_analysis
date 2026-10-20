@@ -51,7 +51,7 @@ Several recurring assumptions show up throughout the code:
 | `library/surface_plotting.py` | Surface plotting helpers for metrics, atlas boundaries, and cluster visualization. | Pure Python plotting utilities once data already exist. |
 | `library/voxel_space_plotting.py` | Nilearn plotting helpers that first reset images into voxel space. | Useful when affines are inconsistent or deliberately ignored. |
 | `library/cluster_surface.py` | Surface-clustering implementation and CLI for connected high-valued metric clusters. | One of the cleaner standalone Python CLIs in the repo. |
-| `library/voxeldepths_from_surfaces.py` | Compute voxelwise depths from white/pial surfaces and transform FreeSurfer surfaces into grid space. | Geometry-heavy; uses `numba` and `joblib`. |
+| `library/voxeldepths_from_surfaces.py` | Compute voxelwise depths from white/pial surfaces and transform FreeSurfer or GIFTI surfaces into grid space. | Re-exports the separate [vdfs](https://github.com/dchaimow/vdfs) package (documented there), which needs to be installed. |
 | `library/plot_surf_slice.py` | Plot a 2D slice through a surface mesh. | Small helper, useful for inspection/debugging. |
 | `library/group_fslr_analysis.py` | Group analysis after sampling subject data to fsLR space. | Importable logic is useful; direct execution is a hard-coded example. |
 
@@ -152,7 +152,7 @@ The older file `docs/layer_analysis.md` outlines the intended architecture and i
 | `library/surface_plotting.py` | Plot fsLR/GIFTI/CIFTI data and atlas boundaries. | `matplotlib`, `nibabel` |
 | `library/plot_surf_slice.py` | Slice and visualize a mesh intersection. | `matplotlib`, `numpy` |
 | `library/voxel_space_plotting.py` | Plot voxel-space anatomy, EPI, stats, ROIs, and labels. | `nilearn`, `nibabel` |
-| `library/voxeldepths_from_surfaces.py` | Derive cortical depths from white and pial surfaces on a voxel grid. | `numpy`, `numba`, `joblib`, FreeSurfer surface files |
+| `library/voxeldepths_from_surfaces.py` | Derive cortical depths from white and pial surfaces on a voxel grid. | `vdfs` (`numpy`, `scipy`, `nibabel`, `numba`, `joblib`), FreeSurfer or GIFTI surface files |
 | `library/ribbon_segmentation_from_surf.py` | Surface-based ribbon segmentation support code. | `numpy`, `numba`, `joblib`, `scikit-image` |
 
 ### Orchestration and workflow support

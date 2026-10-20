@@ -75,7 +75,7 @@ Prioritized next steps for making this repository easier to use, maintain, and r
   - `library/layer_analysis.py`
   - `library/anatomy.py`
   - `library/surface_plotting.py`
-  - `library/voxeldepths_from_surfaces.py`
+  - (`library/voxeldepths_from_surfaces.py` is documented in the vdfs package)
 
 - [ ] Add notes on which scripts are wrappers around external tools versus which implement their own analysis logic.
 
